@@ -373,10 +373,7 @@ static int handle_client_session(SOCKET client_socket)
 int ftp_server_run(unsigned short port)
 {
     SOCKET server_socket;
-    SOCKET client_socket;
-    nw_endpoint_t endpoint;
     int init_status;
-    int result;
 
     init_status = nw_init_winsock();
     if (init_status != 0) {
@@ -392,19 +389,31 @@ int ftp_server_run(unsigned short port)
     }
 
     log_message(LOG_LEVEL_INFO, "ftp server listening on port %u", (unsigned int)port);
-    client_socket = nw_accept_socket(server_socket, &endpoint);
-    if (client_socket == INVALID_SOCKET) {
-        log_socket_error("accept", nw_last_error());
-        nw_close_socket(server_socket);
-        nw_cleanup_winsock();
-        return 1;
+    for (;;) {
+        SOCKET client_socket;
+        nw_endpoint_t endpoint;
+        int result;
+
+        client_socket = nw_accept_socket(server_socket, &endpoint);
+        if (client_socket == INVALID_SOCKET) {
+            log_socket_error("accept", nw_last_error());
+            break;
+        }
+
+        log_message(LOG_LEVEL_INFO, "client connected from %s:%u", endpoint.host, endpoint.port);
+        result = handle_client_session(client_socket);
+        log_message(
+            LOG_LEVEL_INFO,
+            "client session finished: %s:%u status=%s",
+            endpoint.host,
+            endpoint.port,
+            result == 0 ? "ok" : "error"
+        );
+
+        nw_close_socket(client_socket);
     }
 
-    log_message(LOG_LEVEL_INFO, "client connected from %s:%u", endpoint.host, endpoint.port);
-    result = handle_client_session(client_socket);
-
-    nw_close_socket(client_socket);
     nw_close_socket(server_socket);
     nw_cleanup_winsock();
-    return (result == 0) ? 0 : 1;
+    return 0;
 }
